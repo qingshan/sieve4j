@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="sieve4j" basedir=".">
+    <!-- Version Properites -->
+    <property name="project.name" value="sieve4j"/>
+
+    <!-- Path Properites -->
+    <property name="src.dir" value="./src"/>
+    <property name="build.dir" value="./build"/>
+
+    <!-- Class Path Definition -->
+    <path id="classpath">
+    </path>
+
+    <!-- Compile -->
+    <target name="compile" depends="clean">
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${build.dir}/classes"/>
+
+        <!-- Compile Java Source Files -->
+        <javac srcdir="${src.dir}" destdir="${build.dir}/classes" debug="on" nowarn="on" classpathref="classpath"/>
+
+        <!-- Copy Extra Files -->
+        <copy todir="${build.dir}/classes">
+            <fileset dir="${src.dir}">
+                <exclude name="**/*.java"/>
+                <exclude name="**/*.jj"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- Build -->
+    <target name="build" depends="compile">
+        <!-- Build Jar File -->
+        <jar destfile="${build.dir}/${project.name}.jar" basedir="${build.dir}/classes" update="true">
+        </jar>
+    </target>
+
+    <!-- Release -->
+    <target name="release" depends="build">
+        <copy file="${build.dir}/${project.name}.jar" todir="../lib"/>
+    </target>
+
+    <!-- Clean -->
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+
+</project>

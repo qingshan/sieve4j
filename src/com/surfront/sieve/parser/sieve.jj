@@ -1,0 +1,316 @@
+/*
+Sieve BNF grammar:
+    start       :=  commands <EOF>
+    commands    :=  ( command )*
+    command     :=  identifier ( ( test )? block | arguments ";" )
+    block       :=  "{" commands "}"
+    test        :=  identifier ( test | testlist | arguments )
+    testlist    :=  "(" test ( "," test )* ")"
+    arguments   :=  ( argument )*
+    argument    :=  stringlist | number | tag
+    stringlist  :=  string | strings
+    strings     :=  "[" string ( "," string )* "]"
+    tag         :=  <TAG>
+    number      :=  <NUMBER>
+    string      :=  <STRING>
+    identifier  :=  <IDENTIFIER>
+*/
+options {
+    STATIC=false;
+    OUTPUT_DIRECTORY="src/com/surfront/sieve/parser";
+    IGNORE_CASE=true;
+    UNICODE_INPUT=true;
+}
+
+PARSER_BEGIN(SieveParser)
+package com.surfront.sieve.parser;
+
+import java.util.*;
+import com.surfront.sieve.*;
+
+public class SieveParser<T> {
+    protected SieveContext<T> context;
+
+    public SieveContext<T> getSieveContext() {
+        return context;
+    }
+
+    public void setSieveContext(SieveContext<T> context) {
+        this.context = context;
+    }
+}
+
+PARSER_END(SieveParser)
+
+/* White space */
+
+SKIP :
+{
+    " "
+|   "\t"
+|   "\r"
+|   "\n"
+|   "\f"
+}
+
+/* Comments */
+MORE :
+{
+    "#" : IN_SINGLE_LINE_COMMENT
+|
+    "/*" : IN_MULTI_LINE_COMMENT
+}
+
+<IN_SINGLE_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+    <SINGLE_LINE_COMMENT: "\n" | "\r" | "\r\n" > : DEFAULT
+}
+
+<IN_MULTI_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+    <MULTI_LINE_COMMENT: "*/" > : DEFAULT
+}
+
+<IN_SINGLE_LINE_COMMENT,IN_MULTI_LINE_COMMENT>
+MORE :
+{
+    < ~[] >
+}
+
+/* Types */
+
+TOKEN :
+{
+    < NUMBER: (<DIGIT>)+ (["K", "M", "G"])? >
+    | < IDENTIFIER: (<ALPHA> | "_") (<ALPHA> | <DIGIT> | "_")* >
+    | < TAG: ":" <IDENTIFIER> >
+    | < STRING: "\"" (<ESCAPE>)* "\"" >
+    | < #ALPHA: ["A"-"Z"] | ["a"-"z"] >
+    | < #DIGIT: ["0"-"9"] >
+    | < #ESCAPE: ~["\""] | "\\" ["\\", "\""] >
+}
+
+Command<T>[] start() :
+{
+    Command<T>[] commands;
+}
+{
+    try {
+        commands = commands() <EOF>
+        {
+            return commands;
+        }
+    } catch (TokenMgrError e) {
+        throw new ParseException("TokenMgrError: " + e.getMessage());
+    }
+}
+
+Command<T>[] commands() :
+{
+    List<Command<T>> commands = new LinkedList<Command<T>>();
+    Command<T> command;
+}
+{
+    ( command = command()
+        {
+            commands.add(command);
+        }
+    )*
+    {
+        return commands.toArray(new Command[0]);
+    }
+}
+
+Command<T> command() :
+{
+    String type;
+    Test<T> test = null;
+    Command<T>[] block;
+    Argument[] arguments;
+}
+{
+    type = identifier()
+    (
+    [test = test()] block = block()
+        {
+            return context.getCommand(type, test, block);
+        }
+    | arguments = arguments() ";"
+        {
+            return context.getCommand(type, arguments);
+        }
+    )
+}
+
+Command<T>[] block() :
+{
+    Command<T>[] commands;
+}
+{
+    "{" commands = commands() "}"
+    {
+        return commands;
+    }
+}
+
+Test<T> test() :
+{
+    String type;
+    Argument[] arguments;
+    Test<T> test;
+    Test<T>[] tests;
+}
+{
+    type = identifier()
+    ( test = test()
+        {
+            return context.getTest(type, test);
+        }
+    | tests = testlist()
+        {
+            return context.getTest(type, tests);
+        }
+    | arguments = arguments()
+        {
+            return context.getTest(type, arguments);
+        }
+    )
+}
+
+Test<T>[] testlist() :
+{
+    List<Test<T>> tests = new ArrayList<Test<T>>();
+    Test<T> test;
+}
+{
+    "(" test = test()
+        {
+            tests.add(test);
+        }
+    ( "," test = test()
+        {
+            tests.add(test);
+        }
+    )*
+    ")"
+    {
+        return tests.toArray(new Test[0]);
+    }
+}
+
+Argument[] arguments() :
+{
+    List<Argument> arguments = new ArrayList<Argument>();
+    Argument argument;
+}
+{
+    ( argument = argument()
+        {
+            arguments.add(argument);
+        }
+    )*
+    {
+        return arguments.toArray(new Argument[0]);
+    }
+}
+
+Argument argument() :
+{
+    Object o;
+}
+{
+    o = stringlist()
+        {
+            return new StringArgument((String[]) o);
+        }
+    | o = number()
+        {
+            return new NumberArgument((String) o);
+        }
+    | o = tag()
+        {
+            return new TagArgument((String) o);
+        }
+}
+
+String[] stringlist() :
+{
+    String value;
+    String[] values;
+}
+{
+    value = string()
+        {
+            return new String[] { value };
+        }
+    | values = strings()
+        {
+            return values;
+        }
+}
+
+String[] strings() :
+{
+    List<String> values = new ArrayList<String>();
+    String value;
+}
+{
+    "[" value = string()
+        {
+            values.add(value);
+        }
+    ("," value = string()
+        {
+            values.add(value);
+        }
+    )* "]"
+    {
+        return values.toArray(new String[0]);
+    }
+}
+
+String tag() :
+{
+    Token token;
+}
+{
+    token = <TAG>
+    {
+        return token.image.substring(1).toLowerCase();
+    }
+}
+
+String number() :
+{
+    Token token;
+}
+{
+    token = <NUMBER>
+    {
+        return token.image;
+    }
+}
+
+String string() :
+{
+    Token token;
+}
+{
+    token = <STRING>
+    {
+        return StringArgument.unquote(token.image.substring(1, token.image.length() - 1));
+    }
+}
+
+String identifier() :
+{
+    Token token;
+}
+{
+    token = <IDENTIFIER>
+    {
+        return token.image.toLowerCase();
+    }
+}
